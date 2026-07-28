@@ -3,7 +3,7 @@
 import React from "react";
 import { PortfolioSummary, PnlSnapshot } from "@/lib/api";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { Wallet, TrendingUp, DollarSign, RefreshCw } from "lucide-react";
+import { Wallet, TrendingUp, RefreshCw, ShieldCheck } from "lucide-react";
 
 interface PortfolioOverviewProps {
   portfolio: PortfolioSummary | null;
@@ -30,23 +30,27 @@ export const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({
     );
   }
 
-  const isRealizedPos = portfolio.total_realized_pnl >= 0;
-  const isUnrealizedPos = portfolio.total_unrealized_pnl >= 0;
+  const isPos = portfolio.total_pnl >= 0;
 
   return (
     <div className="glass-card p-6 mb-6">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Wallet className="w-5 h-5 text-blue-400" />
-          <h2 className="text-lg font-bold text-gray-100">Portefeuille Virtuel & Évolution P&L</h2>
+          <h2 className="text-lg font-bold text-gray-100">Portefeuille BNCD ($5,000 CAD) & Évolution P&L</h2>
         </div>
-        <button
-          onClick={onReset}
-          className="flex items-center gap-1.5 text-xs text-rose-400 hover:text-rose-300 border border-rose-500/30 hover:bg-rose-500/10 px-3 py-1.5 rounded-lg transition-all"
-          title="Réinitialiser à $100,000 CAD"
-        >
-          <RefreshCw className="w-3.5 h-3.5" /> Reset $100k
-        </button>
+        <div className="flex items-center gap-2">
+          <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/30 flex items-center gap-1">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> BNCD Courtage $0.00
+          </span>
+          <button
+            onClick={onReset}
+            className="flex items-center gap-1.5 text-xs text-rose-400 hover:text-rose-300 border border-rose-500/30 hover:bg-rose-500/10 px-3 py-1.5 rounded-lg transition-all"
+            title="Réinitialiser à $5,000 CAD"
+          >
+            <RefreshCw className="w-3.5 h-3.5" /> Reset $5k
+          </button>
+        </div>
       </div>
 
       {/* Metric Cards Grid */}
@@ -66,16 +70,16 @@ export const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({
         </div>
 
         <div className="bg-slate-900/60 border border-white/5 p-4 rounded-xl">
-          <span className="text-xs text-gray-400 block mb-1">P&L Non Réalisé</span>
-          <span className={`text-xl font-bold font-mono ${isUnrealizedPos ? 'text-emerald-400' : 'text-rose-400'}`}>
-            {isUnrealizedPos ? '+' : ''}${portfolio.total_unrealized_pnl.toFixed(2)} CAD
+          <span className="text-xs text-gray-400 block mb-1">P&L Net Total ($)</span>
+          <span className={`text-xl font-bold font-mono ${isPos ? 'text-emerald-400' : 'text-rose-400'}`}>
+            {isPos ? '+' : ''}${portfolio.total_pnl.toFixed(2)} CAD
           </span>
         </div>
 
         <div className="bg-slate-900/60 border border-white/5 p-4 rounded-xl">
-          <span className="text-xs text-gray-400 block mb-1">P&L Réalisé Total</span>
-          <span className={`text-xl font-bold font-mono ${isRealizedPos ? 'text-emerald-400' : 'text-rose-400'}`}>
-            {isRealizedPos ? '+' : ''}${portfolio.total_realized_pnl.toFixed(2)} CAD
+          <span className="text-xs text-gray-400 block mb-1">Rendement Net (%)</span>
+          <span className={`text-xl font-bold font-mono ${isPos ? 'text-emerald-400' : 'text-rose-400'}`}>
+            {isPos ? '+' : ''}{portfolio.total_pnl_pct.toFixed(2)}%
           </span>
         </div>
       </div>
@@ -83,7 +87,7 @@ export const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({
       {/* Recharts P&L Evolution Chart */}
       <div className="mt-4">
         <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-          <TrendingUp className="w-4 h-4 text-purple-400" /> Graphique d'Évolution du P&L (Recharts)
+          <TrendingUp className="w-4 h-4 text-purple-400" /> Graphique d'Évolution du P&L Net (Recharts)
         </h3>
         <div className="h-56 w-full">
           <ResponsiveContainer width="100%" height="100%">

@@ -20,8 +20,9 @@ export const NewsSentimentFeed: React.FC<NewsSentimentFeedProps> = ({ sentiment,
     );
   }
 
-  const isPositive = sentiment.overall_sentiment === "POSITIVE";
-  const isNegative = sentiment.overall_sentiment === "NEGATIVE";
+  const label = (sentiment.sentiment_label || sentiment.overall_sentiment || "").toUpperCase();
+  const isPositive = label.includes("POSITIVE") || label.includes("HAUSSIER");
+  const isNegative = label.includes("NEGATIVE") || label.includes("BAISSIER");
 
   return (
     <div className="glass-card p-6 mb-6">
@@ -42,7 +43,7 @@ export const NewsSentimentFeed: React.FC<NewsSentimentFeedProps> = ({ sentiment,
             <span className="text-xs text-gray-400 block mb-1">Score de Sentiment Global</span>
             <div className="flex items-center gap-3">
               <span className="text-3xl font-extrabold font-mono text-gray-100">
-                {Math.round(sentiment.sentiment_score)}
+                {Math.round(sentiment.overall_score ?? sentiment.sentiment_score ?? 50)}
                 <span className="text-xs font-sans text-gray-400">/100</span>
               </span>
               <span className={`text-xs font-bold px-3 py-1 rounded-full border ${
@@ -60,12 +61,12 @@ export const NewsSentimentFeed: React.FC<NewsSentimentFeedProps> = ({ sentiment,
           {/* Bullish / Bearish distribution bars */}
           <div className="w-full sm:w-64 flex flex-col gap-2">
             <div className="flex justify-between text-xs text-gray-400">
-              <span>Bullish: <strong className="text-emerald-400">{Math.round(sentiment.bullish_score)}%</strong></span>
-              <span>Bearish: <strong className="text-rose-400">{Math.round(sentiment.bearish_score)}%</strong></span>
+              <span>Bullish: <strong className="text-emerald-400">{Math.round(sentiment.bullish_percentage ?? 50)}%</strong></span>
+              <span>Bearish: <strong className="text-rose-400">{Math.round(sentiment.bearish_percentage ?? 50)}%</strong></span>
             </div>
             <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden flex">
-              <div style={{ width: `${sentiment.bullish_score}%` }} className="bg-emerald-500 transition-all duration-500"></div>
-              <div style={{ width: `${sentiment.bearish_score}%` }} className="bg-rose-500 transition-all duration-500"></div>
+              <div style={{ width: `${sentiment.bullish_percentage ?? 50}%` }} className="bg-emerald-500 transition-all duration-500"></div>
+              <div style={{ width: `${sentiment.bearish_percentage ?? 50}%` }} className="bg-rose-500 transition-all duration-500"></div>
             </div>
           </div>
         </div>
@@ -75,7 +76,7 @@ export const NewsSentimentFeed: React.FC<NewsSentimentFeedProps> = ({ sentiment,
           <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1">
             <Sparkles className="w-3.5 h-3.5 text-purple-400" /> Synthèse Gemini IA
           </h4>
-          <p className="text-sm text-gray-200 leading-relaxed">{sentiment.ai_summary}</p>
+          <p className="text-sm text-gray-200 leading-relaxed">{sentiment.summary}</p>
         </div>
 
         {/* Key Drivers */}
@@ -95,7 +96,7 @@ export const NewsSentimentFeed: React.FC<NewsSentimentFeedProps> = ({ sentiment,
       {/* News Feed Cards List */}
       <div>
         <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-          Dernières dépêches d'actualités ({sentiment.articles_analyzed_count})
+          Dernières dépêches d'actualités ({sentiment.news_count ?? sentiment.articles.length})
         </h3>
         <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
           {sentiment.articles.map((art, idx) => (
@@ -110,9 +111,8 @@ export const NewsSentimentFeed: React.FC<NewsSentimentFeedProps> = ({ sentiment,
                   {art.title} <ExternalLink className="w-3 h-3 flex-shrink-0" />
                 </a>
               </div>
-              <p className="text-xs text-gray-300 mt-1 line-clamp-2">{art.summary}</p>
               <div className="text-[10px] text-gray-500 mt-2 font-mono">
-                Source : {art.publisher} {art.published_at ? `• ${art.published_at}` : ''}
+                Source : {art.publisher} {art.providerPublishTime ? `• ${new Date(art.providerPublishTime * 1000).toLocaleDateString()}` : ''}
               </div>
             </div>
           ))}

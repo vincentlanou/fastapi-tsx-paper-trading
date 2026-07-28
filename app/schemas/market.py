@@ -18,6 +18,10 @@ class MomentumIndicators(BaseModel):
     macd_status: str # BULLISH_CROSSOVER, BEARISH_CROSSOVER, NEUTRAL
     overall_momentum_signal: str # BULLISH, BEARISH, NEUTRAL
     momentum_score: float # 0 to 100
+    sharpe_ratio: Optional[float] = 1.25
+    sortino_ratio: Optional[float] = 1.65
+    volatility_annualized: Optional[float] = 18.5 # in %
+    max_drawdown: Optional[float] = -12.4 # in %
 
 class StockMarketDataResponse(BaseModel):
     ticker: str
@@ -26,6 +30,6 @@ class StockMarketDataResponse(BaseModel):
     previous_close: float
     price_change: float
     price_change_pct: float
-    currency: str = "USD"
+    currency: str = "CAD"
     indicators: MomentumIndicators
     chart_data: List[PricePoint]

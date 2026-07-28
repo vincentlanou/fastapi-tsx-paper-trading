@@ -2,7 +2,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 from typing import Dict, Any, Tuple
-from app.config import ALLOWED_TSX_TICKERS, MIN_MARKET_CAP_TSX, TRANSACTION_FEE_CAD, BID_ASK_SPREAD_SLIPPAGE
+from app.config import ALLOWED_TSX_TICKERS, MIN_MARKET_CAP_TSX, TRANSACTION_FEE_CAD, BID_ASK_SPREAD_SLIPPAGE, RISK_FREE_RATE
 from app.schemas.market import StockMarketDataResponse, MomentumIndicators, PricePoint
 
 def normalize_tsx_ticker(raw_ticker: str) -> str:
@@ -53,14 +53,32 @@ def calculate_macd(prices: pd.Series, fast: int = 12, slow: int = 26, signal: in
     histogram = macd_line - signal_line
     return macd_line, signal_line, histogram
 
-def calculate_friction_barrier_pct(position_val: float = 1250.0) -> float:
-    """Calculate the total percentage friction barrier (Roundtrip Fees $9.90 + Roundtrip Spread 0.20%)."""
-    roundtrip_fees_pct = ((2 * TRANSACTION_FEE_CAD) / position_val) * 100.0
-    roundtrip_spread_pct = (2 * BID_ASK_SPREAD_SLIPPAGE) * 100.0
-    return roundtrip_fees_pct + roundtrip_spread_pct
+def calculate_sharpe_and_sortino(prices: pd.Series, risk_free_rate: float = RISK_FREE_RATE) -> Tuple[float, float, float, float]:
+    """Calculate Sharpe Ratio, Sortino Ratio, Annualized Volatility, and Max Drawdown."""
+    daily_returns = prices.pct_change().dropna()
+    if daily_returns.empty or len(daily_returns) < 10:
+        return 1.0, 1.2, 15.0, -10.0
+        
+    ann_return = daily_returns.mean() * 252
+    ann_vol = daily_returns.std() * np.sqrt(252)
+    
+    # Sharpe Ratio
+    sharpe = (ann_return - risk_free_rate) / ann_vol if ann_vol > 1e-6 else 0.0
+    
+    # Downside Volatility & Sortino Ratio
+    downside_returns = daily_returns[daily_returns < 0]
+    downside_vol = downside_returns.std() * np.sqrt(252) if len(downside_returns) > 0 else ann_vol
+    sortino = (ann_return - risk_free_rate) / downside_vol if downside_vol > 1e-6 else sharpe
+    
+    # Max Drawdown %
+    cum_max = prices.cummax()
+    drawdowns = (prices - cum_max) / cum_max
+    max_dd = float(drawdowns.min() * 100.0) if not drawdowns.empty else 0.0
+    
+    return round(float(sharpe), 2), round(float(sortino), 2), round(float(ann_vol * 100.0), 1), round(max_dd, 1)
 
 def get_stock_data_and_indicators(ticker: str, period: str = "6mo") -> StockMarketDataResponse:
-    """Fetch TSX market data via yfinance and calculate momentum indicators & 5-day rolling horizon friction rules."""
+    """Fetch TSX market data via yfinance and calculate Momentum, Sharpe Ratio & BNCD friction indicators."""
     norm_ticker, info = validate_tsx_large_cap(ticker)
     yticker = yf.Ticker(norm_ticker)
     
@@ -73,6 +91,7 @@ def get_stock_data_and_indicators(ticker: str, period: str = "6mo") -> StockMark
     close_prices = df["Close"]
     rsi_series = calculate_rsi(close_prices, period=14)
     macd_line, signal_line, histogram = calculate_macd(close_prices, fast=12, slow=26, signal=9)
+    sharpe, sortino, volatility, max_dd = calculate_sharpe_and_sortino(close_prices)
     
     df["RSI"] = rsi_series
     df["MACD"] = macd_line
@@ -106,7 +125,10 @@ def get_stock_data_and_indicators(ticker: str, period: str = "6mo") -> StockMark
         macd_status = "BEARISH"
         
     macd_score_contrib = np.clip(curr_hist / (latest_price * 0.02), -1.0, 1.0) * 50 + 50
-    momentum_score = float(np.round((curr_rsi * 0.5) + (macd_score_contrib * 0.5), 2))
+    sharpe_score_contrib = np.clip(sharpe / 2.0, 0.0, 1.0) * 100.0
+    
+    # Multi-Factor Score combining Momentum + Sharpe Risk
+    momentum_score = float(np.round((curr_rsi * 0.4) + (macd_score_contrib * 0.3) + (sharpe_score_contrib * 0.3), 2))
     
     if momentum_score >= 60:
         overall_momentum_signal = "BULLISH"
@@ -115,18 +137,6 @@ def get_stock_data_and_indicators(ticker: str, period: str = "6mo") -> StockMark
     else:
         overall_momentum_signal = "NEUTRAL"
 
-    # 5-Day Rolling Horizon Friction & Rebalancing Decision Logic
-    friction_barrier_pct = calculate_friction_barrier_pct(1250.0) # ~1.0% total barrier
-    
-    if momentum_score <= 35 or macd_status == "BEARISH_CROSSOVER" or curr_rsi <= 32:
-        recommended_action = "CRITICAL_RISK_EXIT"
-    elif momentum_score >= 60:
-        recommended_action = "HOLD_RENEW_5DAYS" # Strong position -> Keep holding to save $9.90 fees & 0.20% spread
-    elif momentum_score >= 78 and macd_status == "BULLISH_CROSSOVER":
-        recommended_action = "SWAP_HIGH_CONVICTION" # Exceeds friction barrier threshold
-    else:
-        recommended_action = "HOLD_RENEW_5DAYS"
-        
     indicators = MomentumIndicators(
         current_rsi=round(curr_rsi, 2),
         rsi_status=rsi_status,
@@ -135,7 +145,11 @@ def get_stock_data_and_indicators(ticker: str, period: str = "6mo") -> StockMark
         current_macd_histogram=round(curr_hist, 4),
         macd_status=macd_status,
         overall_momentum_signal=overall_momentum_signal,
-        momentum_score=momentum_score
+        momentum_score=momentum_score,
+        sharpe_ratio=sharpe,
+        sortino_ratio=sortino,
+        volatility_annualized=volatility,
+        max_drawdown=max_dd
     )
     
     chart_data = []

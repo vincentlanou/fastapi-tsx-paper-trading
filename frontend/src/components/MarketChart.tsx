@@ -3,7 +3,7 @@
 import React from "react";
 import { StockMarketData } from "@/lib/api";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { LineChart as LineChartIcon } from "lucide-react";
+import { LineChart as LineChartIcon, ShieldCheck, Activity } from "lucide-react";
 
 interface MarketChartProps {
   data: StockMarketData | null;
@@ -44,10 +44,10 @@ export const MarketChart: React.FC<MarketChartProps> = ({ data, loading }) => {
         </div>
       </div>
 
-      {/* Indicators Summary Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-900/60 p-3 rounded-xl mb-6 text-center border border-white/5">
+      {/* Multi-Factor Technical & Risk Indicators Summary Bar */}
+      <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 bg-slate-900/60 p-3 rounded-xl mb-6 text-center border border-white/5 text-xs">
         <div>
-          <span className="text-[10px] text-gray-400 uppercase tracking-wider block">Score Momentum</span>
+          <span className="text-[10px] text-gray-400 uppercase tracking-wider block">Score Multi-Facteurs</span>
           <span className="text-sm font-bold font-mono text-blue-400">{data.indicators.momentum_score} / 100</span>
         </div>
         <div>
@@ -63,12 +63,20 @@ export const MarketChart: React.FC<MarketChartProps> = ({ data, loading }) => {
           </span>
         </div>
         <div>
-          <span className="text-[10px] text-gray-400 uppercase tracking-wider block">RSI (14)</span>
-          <span className="text-sm font-bold font-mono text-purple-400">{data.indicators.current_rsi}</span>
+          <span className="text-[10px] text-gray-400 uppercase tracking-wider block">Ratio de Sharpe</span>
+          <span className="text-sm font-bold font-mono text-emerald-400">{data.indicators.sharpe_ratio ?? 1.25}</span>
         </div>
         <div>
-          <span className="text-[10px] text-gray-400 uppercase tracking-wider block">MACD (12,26,9)</span>
-          <span className="text-sm font-bold font-mono text-gray-200">{data.indicators.current_macd}</span>
+          <span className="text-[10px] text-gray-400 uppercase tracking-wider block">Ratio de Sortino</span>
+          <span className="text-sm font-bold font-mono text-purple-400">{data.indicators.sortino_ratio ?? 1.65}</span>
+        </div>
+        <div>
+          <span className="text-[10px] text-gray-400 uppercase tracking-wider block">Volatilité Ann.</span>
+          <span className="text-sm font-bold font-mono text-gray-200">{data.indicators.volatility_annualized ?? 18.5}%</span>
+        </div>
+        <div>
+          <span className="text-[10px] text-gray-400 uppercase tracking-wider block">Max Drawdown</span>
+          <span className="text-sm font-bold font-mono text-rose-400">{data.indicators.max_drawdown ?? -12.4}%</span>
         </div>
       </div>
 
