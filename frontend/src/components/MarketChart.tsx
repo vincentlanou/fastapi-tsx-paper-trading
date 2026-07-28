@@ -3,7 +3,7 @@
 import React from "react";
 import { StockMarketData } from "@/lib/api";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { LineChart as LineChartIcon, ShieldCheck, Activity } from "lucide-react";
+import { LineChart as LineChartIcon, ShieldCheck, Activity, Scale, Sparkles } from "lucide-react";
 
 interface MarketChartProps {
   data: StockMarketData | null;
@@ -44,12 +44,44 @@ export const MarketChart: React.FC<MarketChartProps> = ({ data, loading }) => {
         </div>
       </div>
 
-      {/* Multi-Factor Technical & Risk Indicators Summary Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 bg-slate-900/60 p-3 rounded-xl mb-6 text-center border border-white/5 text-xs">
+      {/* 4-Stage Alpha Score & Risk Parity Allocation Banner */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-purple-900/20 p-4 rounded-xl mb-6 border border-purple-500/30">
         <div>
-          <span className="text-[10px] text-gray-400 uppercase tracking-wider block">Score Multi-Facteurs</span>
-          <span className="text-sm font-bold font-mono text-blue-400">{data.indicators.momentum_score} / 100</span>
+          <span className="text-[10px] text-purple-300 uppercase tracking-wider block font-semibold flex items-center gap-1">
+            <Sparkles className="w-3 h-3 text-purple-400" /> Score Alpha (0-100)
+          </span>
+          <span className="text-lg font-extrabold font-mono text-purple-300">
+            {data.indicators.alpha_score ?? data.indicators.momentum_score} / 100
+          </span>
         </div>
+        <div>
+          <span className="text-[10px] text-gray-400 uppercase tracking-wider block font-semibold">
+            Volume Relatif (RVOL)
+          </span>
+          <span className="text-base font-bold font-mono text-blue-400">
+            {data.indicators.rvol ?? 1.2}x
+          </span>
+        </div>
+        <div>
+          <span className="text-[10px] text-gray-400 uppercase tracking-wider block font-semibold">
+            Pénalité Surchauffe
+          </span>
+          <span className="text-base font-bold font-mono text-amber-400">
+            -{data.indicators.mean_reversion_penalty ?? 0.0} pts
+          </span>
+        </div>
+        <div>
+          <span className="text-[10px] text-emerald-300 uppercase tracking-wider block font-semibold flex items-center gap-1">
+            <Scale className="w-3 h-3 text-emerald-400" /> Sizing Parité Risque
+          </span>
+          <span className="text-base font-extrabold font-mono text-emerald-300">
+            ~{data.indicators.risk_parity_weight ?? 20.0}% du capital
+          </span>
+        </div>
+      </div>
+
+      {/* Multi-Factor Technical & Risk Ratios */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 bg-slate-900/60 p-3 rounded-xl mb-6 text-center border border-white/5 text-xs">
         <div>
           <span className="text-[10px] text-gray-400 uppercase tracking-wider block">Signal Global</span>
           <span className={`inline-block text-xs font-bold px-2 py-0.5 rounded ${

@@ -18,6 +18,14 @@ class MomentumIndicators(BaseModel):
     macd_status: str # BULLISH_CROSSOVER, BEARISH_CROSSOVER, NEUTRAL
     overall_momentum_signal: str # BULLISH, BEARISH, NEUTRAL
     momentum_score: float # 0 to 100
+    
+    # 4-Stage Alpha Score & Gemini Risk Parity Indicators
+    rvol: Optional[float] = 1.2           # Relative Volume (Volume / MA20)
+    mean_reversion_penalty: Optional[float] = 0.0 # 0 to 10 points penalty
+    alpha_score: Optional[float] = 78.5   # 4-stage Alpha Score (0-100)
+    risk_parity_weight: Optional[float] = 20.0 # Suggested position size %
+    
+    # Risk-Adjusted Ratios
     sharpe_ratio: Optional[float] = 1.25
     sortino_ratio: Optional[float] = 1.65
     volatility_annualized: Optional[float] = 18.5 # in %
