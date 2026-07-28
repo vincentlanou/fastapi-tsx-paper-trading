@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Position } from "@/lib/api";
-import { Layers, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { Layers, ArrowUpRight, ArrowDownRight, RefreshCw, ShieldCheck } from "lucide-react";
 
 interface PositionsListProps {
   positions: Position[];
@@ -15,10 +15,10 @@ export const PositionsList: React.FC<PositionsListProps> = ({ positions, onQuick
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Layers className="w-5 h-5 text-purple-400" />
-          <h2 className="text-lg font-bold text-gray-100">Positions Ouvertes (TSX)</h2>
+          <h2 className="text-lg font-bold text-gray-100">Positions Ouvertes & Suivi Horizon 5J</h2>
         </div>
         <span className="text-xs px-2.5 py-1 rounded-full bg-purple-500/20 text-purple-300 font-semibold border border-purple-400/30">
-          {positions.length} active(s)
+          {positions.length} / 5 max
         </span>
       </div>
 
@@ -30,8 +30,8 @@ export const PositionsList: React.FC<PositionsListProps> = ({ positions, onQuick
               <th className="p-3">Qté</th>
               <th className="p-3">Prix Moyen</th>
               <th className="p-3">Prix Actuel</th>
-              <th className="p-3">Valeur Mkt</th>
-              <th className="p-3">P&L ($ / %)</th>
+              <th className="p-3">P&L Net ($ / %)</th>
+              <th className="p-3">Statut 5J & Friction</th>
               <th className="p-3 text-right">Action</th>
             </tr>
           </thead>
@@ -54,10 +54,14 @@ export const PositionsList: React.FC<PositionsListProps> = ({ positions, onQuick
                     <td className="p-3 text-gray-200">{pos.quantity}</td>
                     <td className="p-3 text-gray-300">${pos.average_buy_price.toFixed(2)}</td>
                     <td className="p-3 text-gray-100 font-semibold">${pos.current_price.toFixed(2)}</td>
-                    <td className="p-3 text-gray-200">${pos.market_value.toFixed(2)}</td>
                     <td className={`p-3 font-semibold flex items-center gap-1 ${isPos ? 'text-emerald-400' : 'text-rose-400'}`}>
                       {isPos ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
                       {isPos ? '+' : ''}${pos.unrealized_pnl.toFixed(2)} ({pos.unrealized_pnl_pct.toFixed(2)}%)
+                    </td>
+                    <td className="p-3 font-sans">
+                      <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                        <ShieldCheck className="w-3 h-3 text-emerald-400" /> Conserver & Renouveler 5J
+                      </span>
                     </td>
                     <td className="p-3 text-right font-sans">
                       <button

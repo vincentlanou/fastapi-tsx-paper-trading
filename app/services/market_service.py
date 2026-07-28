@@ -2,7 +2,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 from typing import Dict, Any, Tuple
-from app.config import ALLOWED_TSX_TICKERS, MIN_MARKET_CAP_TSX
+from app.config import ALLOWED_TSX_TICKERS, MIN_MARKET_CAP_TSX, TRANSACTION_FEE_CAD, BID_ASK_SPREAD_SLIPPAGE
 from app.schemas.market import StockMarketDataResponse, MomentumIndicators, PricePoint
 
 def normalize_tsx_ticker(raw_ticker: str) -> str:
@@ -53,8 +53,14 @@ def calculate_macd(prices: pd.Series, fast: int = 12, slow: int = 26, signal: in
     histogram = macd_line - signal_line
     return macd_line, signal_line, histogram
 
+def calculate_friction_barrier_pct(position_val: float = 1250.0) -> float:
+    """Calculate the total percentage friction barrier (Roundtrip Fees $9.90 + Roundtrip Spread 0.20%)."""
+    roundtrip_fees_pct = ((2 * TRANSACTION_FEE_CAD) / position_val) * 100.0
+    roundtrip_spread_pct = (2 * BID_ASK_SPREAD_SLIPPAGE) * 100.0
+    return roundtrip_fees_pct + roundtrip_spread_pct
+
 def get_stock_data_and_indicators(ticker: str, period: str = "6mo") -> StockMarketDataResponse:
-    """Fetch TSX market data via yfinance and calculate momentum indicators & 5-day horizon flags."""
+    """Fetch TSX market data via yfinance and calculate momentum indicators & 5-day rolling horizon friction rules."""
     norm_ticker, info = validate_tsx_large_cap(ticker)
     yticker = yf.Ticker(norm_ticker)
     
@@ -109,13 +115,17 @@ def get_stock_data_and_indicators(ticker: str, period: str = "6mo") -> StockMark
     else:
         overall_momentum_signal = "NEUTRAL"
 
-    # 5-Day Horizon Rule Triggers
+    # 5-Day Rolling Horizon Friction & Rebalancing Decision Logic
+    friction_barrier_pct = calculate_friction_barrier_pct(1250.0) # ~1.0% total barrier
+    
     if momentum_score <= 35 or macd_status == "BEARISH_CROSSOVER" or curr_rsi <= 32:
-        recommended_action = "CRITICAL_EXIT_RISK"
-    elif momentum_score >= 75 and macd_status == "BULLISH_CROSSOVER":
-        recommended_action = "CRITICAL_BUY_OPPORTUNITY"
+        recommended_action = "CRITICAL_RISK_EXIT"
+    elif momentum_score >= 60:
+        recommended_action = "HOLD_RENEW_5DAYS" # Strong position -> Keep holding to save $9.90 fees & 0.20% spread
+    elif momentum_score >= 78 and macd_status == "BULLISH_CROSSOVER":
+        recommended_action = "SWAP_HIGH_CONVICTION" # Exceeds friction barrier threshold
     else:
-        recommended_action = "HOLD_5_DAYS"
+        recommended_action = "HOLD_RENEW_5DAYS"
         
     indicators = MomentumIndicators(
         current_rsi=round(curr_rsi, 2),
