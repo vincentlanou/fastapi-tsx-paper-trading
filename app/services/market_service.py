@@ -29,8 +29,8 @@ def validate_tsx_large_cap(ticker: str) -> Tuple[str, Dict[str, Any]]:
     
     if not is_tsx or not is_large_cap:
         raise ValueError(
-            f"L'action '{ticker}' n'est pas autorisée. "
-            f"Seules les actions Large Cap de la Bourse de Toronto (TSX, ex: SHOP.TO, RY.TO, TD.TO, ENB.TO) sont acceptées."
+            f"The stock '{ticker}' is not eligible. "
+            f"Only Large Cap stocks traded on the Toronto Stock Exchange (TSX, e.g. SHOP.TO, RY.TO, TD.TO, ENB.TO, WCN.TO, QSR.TO) are allowed."
         )
         
     return norm_ticker, info
