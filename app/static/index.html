@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuantPulse | Platforme Paper Trading & Sentiment IA</title>
+    <!-- Modern Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Chart.js for technical indicator charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Top Navbar -->
+        <header class="navbar">
+            <div class="brand">
+                <span class="logo-icon">⚡</span>
+                <span class="logo-text">QuantPulse <span class="badge-ai">IA</span></span>
+            </div>
+            
+            <div class="search-box">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="tickerInput" placeholder="Rechercher une action (ex: AAPL, NVDA, TSLA, BTC-USD)..." value="AAPL">
+                <button id="searchBtn">Analyser</button>
+            </div>
+            
+            <div class="quick-tickers">
+                <button class="chip active" onclick="loadTicker('AAPL')">AAPL</button>
+                <button class="chip" onclick="loadTicker('NVDA')">NVDA</button>
+                <button class="chip" onclick="loadTicker('TSLA')">TSLA</button>
+                <button class="chip" onclick="loadTicker('MSFT')">MSFT</button>
+                <button class="chip" onclick="loadTicker('BTC-USD')">BTC-USD</button>
+            </div>
+        </header>
+
+        <!-- Notification Toast -->
+        <div id="toastContainer" class="toast-container"></div>
+
+        <!-- Main Grid Layout -->
+        <main class="dashboard-grid">
+            
+            <!-- Left Column: Market & Indicators + AI Sentiment -->
+            <section class="left-panel">
+                <!-- Ticker Header Card -->
+                <div class="card market-header-card">
+                    <div class="ticker-title-group">
+                        <div>
+                            <h1 id="stockSymbol">AAPL</h1>
+                            <span id="companyName" class="company-subtitle">Apple Inc.</span>
+                        </div>
+                        <div class="price-box">
+                            <span id="stockPrice" class="price-val">$0.00</span>
+                            <span id="priceChange" class="change-val">+0.00 (+0.00%)</span>
+                        </div>
+                    </div>
+
+                    <div class="indicators-bar">
+                        <div class="ind-pill">
+                            <span class="ind-label">Score Momentum</span>
+                            <span id="momentumScore" class="ind-val text-bullish">-- / 100</span>
+                        </div>
+                        <div class="ind-pill">
+                            <span class="ind-label">Signal Global</span>
+                            <span id="momentumSignal" class="badge-signal signal-neutral">NEUTRAL</span>
+                        </div>
+                        <div class="ind-pill">
+                            <span class="ind-label">RSI (14)</span>
+                            <span id="rsiVal" class="ind-val">--</span>
+                        </div>
+                        <div class="ind-pill">
+                            <span class="ind-label">MACD (12,26,9)</span>
+                            <span id="macdVal" class="ind-val">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Price Chart & Momentum Chart -->
+                <div class="card chart-card">
+                    <div class="card-header">
+                        <h3>📈 Prix & Indicateurs de Momentum (RSI + MACD)</h3>
+                        <div class="chart-timeframe">
+                            <button class="tf-btn active">6M</button>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="priceChart"></canvas>
+                    </div>
+                    <div class="subchart-container">
+                        <canvas id="macdChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Gemini AI Sentiment Card -->
+                <div class="card sentiment-card">
+                    <div class="card-header">
+                        <h3>🤖 Sentiment des News via Gemini API</h3>
+                        <span id="aiBadge" class="badge-ai-status">Gemini 2.5 Flash</span>
+                    </div>
+
+                    <div class="sentiment-content">
+                        <div class="sentiment-score-row">
+                            <div class="sentiment-meter-box">
+                                <span class="meter-title">Sentiment Global</span>
+                                <div id="sentimentBadge" class="badge-sentiment sentiment-pos">POSITIVE</div>
+                                <div class="score-display"><span id="sentimentScoreVal">78</span><small>/100</small></div>
+                            </div>
+                            <div class="sentiment-progress-group">
+                                <div class="meter-bar-item">
+                                    <div class="bar-label"><span>Bullish</span><strong id="bullishScore">78%</strong></div>
+                                    <div class="progress-bg"><div id="bullishBar" class="progress-fill fill-bull" style="width: 78%;"></div></div>
+                                </div>
+                                <div class="meter-bar-item">
+                                    <div class="bar-label"><span>Bearish</span><strong id="bearishScore">22%</strong></div>
+                                    <div class="progress-bg"><div id="bearishBar" class="progress-fill fill-bear" style="width: 22%;"></div></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="ai-summary-box">
+                            <h4>Résumé de l'Analyse IA</h4>
+                            <p id="aiSummaryText">Chargement de l'analyse de sentiment Gemini...</p>
+                        </div>
+
+                        <div class="key-drivers-box">
+                            <h4>Facteurs Clés Identifiés</h4>
+                            <ul id="keyDriversList" class="drivers-list"></ul>
+                        </div>
+
+                        <details class="news-accordion">
+                            <summary>📰 Voir les articles analysés (<span id="newsCount">0</span>)</summary>
+                            <div id="articlesList" class="articles-container"></div>
+                        </details>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Column: Paper Trading & Virtual Portfolio -->
+            <section class="right-panel">
+                
+                <!-- Trading Terminal -->
+                <div class="card trading-card">
+                    <div class="card-header">
+                        <h3>⚡ Terminal de Paper Trading</h3>
+                        <span class="badge-live">Prix en Direct</span>
+                    </div>
+
+                    <div class="trading-tabs">
+                        <button id="tabBuy" class="trade-tab active" onclick="setOrderType('BUY')">ACHAT</button>
+                        <button id="tabSell" class="trade-tab" onclick="setOrderType('SELL')">VENTE</button>
+                    </div>
+
+                    <form id="tradeForm" onsubmit="executeTrade(event)" class="trade-form">
+                        <div class="form-group">
+                            <label>Symbole</label>
+                            <input type="text" id="tradeTicker" readonly class="input-readonly">
+                        </div>
+                        <div class="form-group">
+                            <label>Quantité d'actions</label>
+                            <input type="number" id="tradeQty" step="any" min="0.0001" placeholder="Ex: 10" required oninput="calcTradeTotal()">
+                        </div>
+
+                        <div class="trade-calc-summary">
+                            <div class="calc-row">
+                                <span>Prix unitaire estimé :</span>
+                                <strong id="tradeEstPrice">$0.00</strong>
+                            </div>
+                            <div class="calc-row total-row">
+                                <span>Montant Total Estimé :</span>
+                                <strong id="tradeEstTotal">$0.00</strong>
+                            </div>
+                        </div>
+
+                        <button type="submit" id="btnExecuteTrade" class="btn-execute btn-buy">Simuler l'Achat</button>
+                    </form>
+                </div>
+
+                <!-- Virtual Portfolio Summary & Realized P&L -->
+                <div class="card portfolio-card">
+                    <div class="card-header">
+                        <h3>💼 Portefeuille Virtuel & P&L</h3>
+                        <div class="header-actions">
+                            <button onclick="triggerTelegramTest()" class="btn-sm btn-outline" title="Tester le webhook Telegram">📲 Webhook Telegram</button>
+                            <button onclick="resetPortfolio()" class="btn-sm btn-danger-outline" title="Réinitialiser le capital virtuel à $100k">🔄 Reset</button>
+                        </div>
+                    </div>
+
+                    <!-- Metrics Grid -->
+                    <div class="metrics-grid">
+                        <div class="metric-card">
+                            <span class="metric-title">Valeur Totale Équité</span>
+                            <span id="totalEquityVal" class="metric-val">$100,000.00</span>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-title">Solde Cash Disponible</span>
+                            <span id="cashBalanceVal" class="metric-val">$100,000.00</span>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-title">P&L Non Réalisé (Positions)</span>
+                            <span id="unrealizedPnlVal" class="metric-val">$0.00</span>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-title">P&L Réalisé Total</span>
+                            <span id="realizedPnlVal" class="metric-val">$0.00</span>
+                        </div>
+                    </div>
+
+                    <!-- Positions Table -->
+                    <div class="table-section">
+                        <h4>Positions Actives</h4>
+                        <div class="table-wrapper">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Ticker</th>
+                                        <th>Qté</th>
+                                        <th>Prix Moyen</th>
+                                        <th>Prix Actuel</th>
+                                        <th>Valeur Mkt</th>
+                                        <th>P&L ($)</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="positionsTableBody">
+                                    <tr><td colspan="7" class="empty-msg">Aucune position active pour le moment.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Trade History Log -->
+                    <div class="table-section mt-4">
+                        <h4>Historique des Ordres Simulés</h4>
+                        <div class="table-wrapper max-h-history">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Type</th>
+                                        <th>Ticker</th>
+                                        <th>Qté</th>
+                                        <th>Prix Exec.</th>
+                                        <th>Total</th>
+                                        <th>P&L Réalisé</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="historyTableBody">
+                                    <tr><td colspan="7" class="empty-msg">Aucun trade exécuté.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+
+            </section>
+        </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

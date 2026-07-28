@@ -1,0 +1,25 @@
+# Environments
+.venv/
+env/
+venv/
+.env
+
+# Database & Logs
+*.db
+*.sqlite
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# System / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
