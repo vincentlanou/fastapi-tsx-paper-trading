@@ -9,6 +9,7 @@ export interface MomentumIndicators {
   macd_status: string;
   overall_momentum_signal: string;
   momentum_score: number;
+  rvol?: number;
   alpha_score?: number;
   var_10d_95?: number;
   cvar_10d_95?: number;
@@ -90,10 +91,15 @@ export interface Trade {
 }
 
 export interface PortfolioSummary {
+  account_id?: number;
   account_name: string;
+  created_at?: string;
   cash_balance: number;
-  total_stock_value: number;
+  total_stock_value?: number;
+  portfolio_stock_value?: number;
   total_equity: number;
+  total_realized_pnl?: number;
+  total_unrealized_pnl?: number;
   total_pnl: number;
   total_pnl_pct: number;
   positions: Position[];
