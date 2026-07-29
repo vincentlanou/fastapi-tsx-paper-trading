@@ -20,6 +20,7 @@ class PositionResponse(BaseModel):
 class PortfolioResponse(BaseModel):
     account_id: int
     account_name: str
+    created_at: str
     cash_balance: float
     portfolio_stock_value: float
     total_equity: float

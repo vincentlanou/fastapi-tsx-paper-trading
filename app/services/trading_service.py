@@ -1,4 +1,5 @@
 import math
+import numpy as np
 import yfinance as yf
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -93,6 +94,26 @@ def buy_stock(db: Session, ticker: str, quantity: float) -> TradeResponse:
         raise HTTPException(status_code=400, detail=str(e))
         
     account = get_or_create_account(db)
+    
+    # Regime-Aware Entry Filter (Falling Knife Protection)
+    # Instead of force-liquidating on drawdowns, we block new buys when the
+    # benchmark (XIU.TO) is in a falling knife regime: below its 50-day MA
+    # with annualized volatility > 30%.
+    try:
+        bench = yf.Ticker("XIU.TO").history(period="3mo")
+        if not bench.empty and len(bench) >= 50:
+            bench_price = float(bench["Close"].iloc[-1])
+            bench_ma50 = float(bench["Close"].rolling(50).mean().iloc[-1])
+            bench_vol = float(bench["Close"].pct_change().rolling(30).std().iloc[-1] * np.sqrt(252) * 100.0)
+            if bench_price < bench_ma50 and bench_vol > 30.0:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Régime Falling Knife détecté : XIU.TO est sous sa MA50 avec une volatilité de {bench_vol:.1f}%. Les nouveaux achats sont suspendus pour éviter d'attraper un couteau qui tombe. Vos positions existantes sont conservées."
+                )
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # If benchmark check fails, allow the trade
     
     # Enforce Maximum Open Positions Constraint (Max 5 positions)
     existing_pos = db.query(Position).filter(
@@ -297,6 +318,7 @@ def get_portfolio_summary(db: Session) -> PortfolioResponse:
     return PortfolioResponse(
         account_id=account.id,
         account_name=account.name,
+        created_at=account.created_at.strftime("%Y-%m-%d %H:%M:%S") if account.created_at else "",
         cash_balance=round(account.cash_balance, 2),
         portfolio_stock_value=round(total_stock_value, 2),
         total_equity=round(total_equity, 2),
@@ -360,7 +382,35 @@ def reset_account(db: Session) -> PortfolioResponse:
     db.query(Trade).filter(Trade.account_id == account.id).delete()
     db.query(PortfolioSnapshot).filter(PortfolioSnapshot.account_id == account.id).delete()
     account.cash_balance = INITIAL_BALANCE
+    account.created_at = datetime.utcnow()
     db.commit()
     db.refresh(account)
     record_snapshot(db, account)
     return get_portfolio_summary(db)
+
+def get_benchmarks_performance(db: Session) -> dict:
+    """Calculate the performance of TSX 60 (XIU.TO) and S&P 500 (ZSP.TO) since account inception."""
+    account = get_or_create_account(db)
+    inception_date = account.created_at or datetime.utcnow()
+    start_str = inception_date.strftime("%Y-%m-%d")
+    
+    benchmarks = {
+        "XIU.TO": {"name": "TSX 60", "return_pct": 0.0},
+        "ZSP.TO": {"name": "S&P 500 (CAD)", "return_pct": 0.0}
+    }
+    
+    try:
+        for ticker, data in benchmarks.items():
+            yt = yf.Ticker(ticker)
+            # Fetch history from inception date to today
+            df = yt.history(start=start_str)
+            if not df.empty and len(df) > 0:
+                start_price = float(df["Close"].iloc[0])
+                current_price = float(df["Close"].iloc[-1])
+                if start_price > 0:
+                    ret = ((current_price - start_price) / start_price) * 100.0
+                    benchmarks[ticker]["return_pct"] = round(ret, 2)
+    except Exception as e:
+        print(f"Error fetching benchmark data: {e}")
+        
+    return benchmarks

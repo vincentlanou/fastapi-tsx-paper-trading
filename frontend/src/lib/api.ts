@@ -9,10 +9,18 @@ export interface MomentumIndicators {
   macd_status: string;
   overall_momentum_signal: string;
   momentum_score: number;
+  alpha_score?: number;
+  var_10d_95?: number;
+  cvar_10d_95?: number;
   sharpe_ratio?: number;
   sortino_ratio?: number;
   volatility_annualized?: number;
   max_drawdown?: number;
+}
+
+export interface MarketRegime {
+  regime: "NORMAL" | "FALLING_KNIFE" | "RECOVERY";
+  message: string;
 }
 
 export interface StockMarketData {
@@ -115,6 +123,46 @@ export async function fetchSentiment(ticker: string): Promise<SentimentAnalysis>
   return res.json();
 }
 
+export async function fetchMarketRegime(): Promise<MarketRegime> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/market/regime/global`, { cache: 'no-store' });
+    if (!res.ok) return { regime: "NORMAL", message: "Failed to fetch regime" };
+    return await res.json();
+  } catch (err) {
+    return { regime: "NORMAL", message: "Failed to fetch regime" };
+  }
+}
+
+export async function resetPortfolio(): Promise<PortfolioSummary> {
+  const res = await fetch(`${API_BASE_URL}/trading/reset`, {
+    method: 'POST',
+    cache: 'no-store'
+  });
+  if (!res.ok) throw new Error("Failed to reset portfolio");
+  return res.json();
+}
+
+export async function fetchBenchmarks(): Promise<Record<string, {name: string, return_pct: number}>> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/trading/benchmarks`, { cache: 'no-store' });
+    if (!res.ok) return {};
+    return await res.json();
+  } catch (err) {
+    return {};
+  }
+}
+
+export async function fetchUniverse(): Promise<string[]> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/market/universe`, { cache: 'no-store' });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.tickers || [];
+  } catch (err) {
+    return [];
+  }
+}
+
 export async function fetchPortfolio(): Promise<PortfolioSummary> {
   const res = await fetch(`${API_BASE_URL}/trading/portfolio`, { cache: 'no-store' });
   if (!res.ok) throw new Error("Failed to fetch portfolio");
@@ -161,10 +209,3 @@ export async function sellStock(ticker: string, quantity: number): Promise<any> 
   return res.json();
 }
 
-export async function resetAccount(): Promise<any> {
-  const res = await fetch(`${API_BASE_URL}/trading/reset`, { method: 'POST' });
-  if (!res.ok) throw new Error("Failed to reset account");
-  return res.json();
-}
-
-export const resetPortfolio = resetAccount;

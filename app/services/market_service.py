@@ -4,6 +4,8 @@ import numpy as np
 from typing import Dict, Any, Tuple, List
 from app.config import ALLOWED_TSX_TICKERS, MIN_MARKET_CAP_TSX, TRANSACTION_FEE_CAD, BID_ASK_SPREAD_SLIPPAGE, RISK_FREE_RATE
 from app.schemas.market import StockMarketDataResponse, MomentumIndicators, PricePoint
+from app.services.sentiment_service import get_news_sentiment
+
 
 def normalize_tsx_ticker(raw_ticker: str) -> str:
     """Normalize input ticker to TSX format (.TO extension)."""
@@ -36,11 +38,15 @@ def validate_tsx_large_cap(ticker: str) -> Tuple[str, Dict[str, Any]]:
     return norm_ticker, info
 
 def calculate_rsi(prices: pd.Series, period: int = 14) -> pd.Series:
-    """Calculate Relative Strength Index (RSI)."""
+    """Calculate Relative Strength Index (RSI) using Wilder's Exponential Smoothing."""
     delta = prices.diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-    rs = gain / loss.replace(0, np.nan)
+    gain = delta.where(delta > 0, 0.0)
+    loss = -delta.where(delta < 0, 0.0)
+    
+    avg_gain = gain.ewm(alpha=1/period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1/period, adjust=False).mean()
+    
+    rs = avg_gain / avg_loss.replace(0, np.nan)
     rsi = 100 - (100 / (1 + rs))
     return rsi.fillna(50.0)
 
@@ -99,6 +105,29 @@ def calculate_sharpe_and_sortino(prices: pd.Series, risk_free_rate: float = RISK
     
     return round(float(sharpe), 2), round(float(sortino), 2), round(float(ann_vol * 100.0), 1), round(max_dd, 1)
 
+def calculate_tail_risk(prices: pd.Series) -> Tuple[float, float]:
+    """Calculate 10-day Parametric VaR (95%) and Historical CVaR (95%)."""
+    daily_returns = prices.pct_change().dropna()
+    if len(daily_returns) < 10:
+        return 0.0, 0.0
+        
+    rolling_10d_returns = daily_returns.rolling(10).apply(lambda x: (1 + x).prod() - 1, raw=False).dropna()
+    if rolling_10d_returns.empty:
+        return 0.0, 0.0
+        
+    mu = rolling_10d_returns.mean()
+    sigma = rolling_10d_returns.std()
+    
+    # Parametric VaR 95%
+    var_95 = -(mu - 1.645 * sigma) * 100.0
+    
+    # Historical CVaR 95% (Expected Shortfall)
+    threshold = rolling_10d_returns.quantile(0.05)
+    tail_losses = rolling_10d_returns[rolling_10d_returns <= threshold]
+    cvar_95 = -tail_losses.mean() * 100.0 if not tail_losses.empty else var_95
+    
+    return round(float(var_95), 2), round(float(cvar_95), 2)
+
 def calculate_risk_parity_weights(volatilities: List[float]) -> List[float]:
     """Calculate Step 2 Risk Parity Position Sizing (Inverse Volatility Weighting)."""
     inv_vols = [1.0 / max(1.0, v) for v in volatilities]
@@ -125,6 +154,7 @@ def get_stock_data_and_indicators(ticker: str, period: str = "6mo") -> StockMark
     macd_line, signal_line, histogram = calculate_macd(close_prices, fast=12, slow=26, signal=9)
     rvol = calculate_rvol(volume_series, window=20)
     sharpe, sortino, volatility, max_dd = calculate_sharpe_and_sortino(close_prices)
+    var_10d, cvar_10d = calculate_tail_risk(close_prices)
     
     df["RSI"] = rsi_series
     df["MACD"] = macd_line
@@ -158,8 +188,12 @@ def get_stock_data_and_indicators(ticker: str, period: str = "6mo") -> StockMark
         macd_status = "BEARISH"
         
     # Step 1: 4-Stage Alpha Score Components (0-100)
-    # 1) NLP News Sentiment Default Baseline (70/100)
-    nlp_sentiment_score = 70.0
+    # 1) NLP News Sentiment Baseline via Gemini / Fallback
+    try:
+        sentiment_data = get_news_sentiment(norm_ticker)
+        nlp_sentiment_score = sentiment_data.sentiment_score
+    except Exception:
+        nlp_sentiment_score = 50.0  # Safe neutral fallback if fetching fails
     # 2) Momentum Score (RSI + MACD)
     macd_score_contrib = np.clip(curr_hist / (latest_price * 0.02), -1.0, 1.0) * 50 + 50
     momentum_score = (curr_rsi * 0.5) + (macd_score_contrib * 0.5)
@@ -202,7 +236,9 @@ def get_stock_data_and_indicators(ticker: str, period: str = "6mo") -> StockMark
         sharpe_ratio=sharpe,
         sortino_ratio=sortino,
         volatility_annualized=volatility,
-        max_drawdown=max_dd
+        max_drawdown=max_dd,
+        var_10d_95=var_10d,
+        cvar_10d_95=cvar_10d
     )
     
     chart_data = []

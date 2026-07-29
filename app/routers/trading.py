@@ -36,3 +36,12 @@ def execute_sell(trade_req: TradeRequest, db: Session = Depends(get_db)):
 def reset_portfolio(db: Session = Depends(get_db)):
     """Reset virtual cash balance to $100,000 CAD and clear active positions & trade history."""
     return trading_service.reset_account(db)
+
+@router.get("/benchmarks")
+def get_benchmarks(db: Session = Depends(get_db)):
+    """Get TSX 60 and S&P 500 performance since portfolio inception."""
+    try:
+        from app.services.trading_service import get_benchmarks_performance
+        return get_benchmarks_performance(db)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))

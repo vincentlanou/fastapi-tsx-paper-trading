@@ -20,16 +20,19 @@ class MomentumIndicators(BaseModel):
     momentum_score: float # 0 to 100
     
     # 4-Stage Alpha Score & Gemini Risk Parity Indicators
-    rvol: Optional[float] = 1.2           # Relative Volume (Volume / MA20)
-    mean_reversion_penalty: Optional[float] = 0.0 # 0 to 10 points penalty
-    alpha_score: Optional[float] = 78.5   # 4-stage Alpha Score (0-100)
-    risk_parity_weight: Optional[float] = 20.0 # Suggested position size %
+    # 4-Stage Alpha Score & Gemini Risk Parity Indicators
+    rvol: Optional[float] = None           # Relative Volume (Volume / MA20)
+    mean_reversion_penalty: Optional[float] = None # 0 to 10 points penalty
+    alpha_score: Optional[float] = None   # 4-stage Alpha Score (0-100)
+    risk_parity_weight: Optional[float] = None # Suggested position size %
     
     # Risk-Adjusted Ratios
-    sharpe_ratio: Optional[float] = 1.25
-    sortino_ratio: Optional[float] = 1.65
-    volatility_annualized: Optional[float] = 18.5 # in %
-    max_drawdown: Optional[float] = -12.4 # in %
+    sharpe_ratio: Optional[float] = None
+    sortino_ratio: Optional[float] = None
+    volatility_annualized: Optional[float] = None # in %
+    max_drawdown: Optional[float] = None # in %
+    var_10d_95: Optional[float] = None # 10-day Parametric VaR (95%)
+    cvar_10d_95: Optional[float] = None # 10-day Expected Shortfall (95%)
 
 class StockMarketDataResponse(BaseModel):
     ticker: str

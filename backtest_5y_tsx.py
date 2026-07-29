@@ -15,7 +15,12 @@ GLOBAL_75_UNIVERSE = [
     "META.TO", "BRK.TO", "JPM.TO", "V.TO", "WMT.TO", "XOM.TO",
     "PG.TO", "HD.TO", "JNJ.TO", "COST.TO", "ORCL.TO", "CRM.TO",
     "CVX.TO", "AMD.TO", "KO.TO", "PEP.TO", "DIS.TO", "NFLX.TO",
-    "ABT.TO", "BAC.TO", "CAT.TO", "IBM.TO", "LLY.TO", "AVGO.TO"
+    "ABT.TO", "BAC.TO", "CAT.TO", "IBM.TO", "LLY.TO", "AVGO.TO",
+    # Top MSCI EAFE International Leaders Traded on TSX
+    "ASML.TO", "AZN.TO", "SAP.TO", "SHEL.TO", "BTI.TO", "TTE.TO",
+    "RHHBY.TO", "SNY.TO", "BAP.TO", "BP.TO", "UL.TO", "DEO.TO",
+    "GSK.TO", "SONY.TO", "RIO.TO", "BHP.TO", "NVO.TO", "NVS.TO",
+    "TM.TO", "HSBC.TO", "IMO.TO", "L.TO", "TECK-B.TO", "FNV.TO", "AEM.TO"
 ]
 
 INITIAL_CAPITAL = 5000.0
@@ -27,9 +32,11 @@ RISK_FREE_RATE = 0.025      # 2.5% CAD annual risk-free rate
 
 def calculate_rsi(prices: pd.Series, period: int = 14) -> pd.Series:
     delta = prices.diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-    rs = gain / loss.replace(0, np.nan)
+    gain = delta.where(delta > 0, 0.0)
+    loss = -delta.where(delta < 0, 0.0)
+    avg_gain = gain.ewm(alpha=1/period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1/period, adjust=False).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
     return (100 - (100 / (1 + rs))).fillna(50.0)
 
 def calculate_macd(prices: pd.Series) -> Tuple[pd.Series, pd.Series, pd.Series]:
@@ -57,8 +64,10 @@ def run_backtest():
 
     data_dict = {}
     for ticker in GLOBAL_75_UNIVERSE:
-        df = yf.Ticker(ticker).history(period="5y", interval="1d")
-        if not df.empty and len(df) > 200:
+        # auto_adjust=True ensures closing prices are fully adjusted for splits and dividends
+        df = yf.Ticker(ticker).history(period="5y", interval="1d", auto_adjust=True)
+        # Ensure stock has a full 5-year history (~1200 trading days) to avoid CDR inception bias
+        if not df.empty and len(df) >= 1200:
             df["RSI"] = calculate_rsi(df["Close"])
             macd, signal, hist = calculate_macd(df["Close"])
             df["MACD_Hist"] = hist
@@ -66,8 +75,8 @@ def run_backtest():
             vol_series = df["Volume"] if "Volume" in df else pd.Series([1000000]*len(df), index=df.index)
             df["RVOL"] = calculate_rvol_series(vol_series)
             
-            # Step 1: 4-Stage Alpha Score (40% Sentiment + 30% Momentum + 20% RVOL - 10% Penalty)
-            nlp_sim = 70.0 # 10-day sentiment baseline
+            # Step 1: 4-Stage Alpha Score (60% Momentum + 40% RVOL - Penalty)
+            # Note: Historical NLP sentiment is unavailable, so weights are redistributed.
             rsi_norm = df["RSI"]
             hist_norm = np.clip(hist / (df["Close"] * 0.02), -1.0, 1.0) * 50 + 50
             momentum = (rsi_norm * 0.5) + (hist_norm * 0.5)
@@ -75,14 +84,17 @@ def run_backtest():
             
             penalty = np.where(df["RSI"] > 70, (df["RSI"] - 70) * 0.4, 0.0)
             
-            df["Alpha_Score"] = np.clip((0.40 * nlp_sim) + (0.30 * momentum) + (0.20 * rvol_score) - penalty, 0.0, 100.0)
+            df["Alpha_Score"] = np.clip((0.60 * momentum) + (0.40 * rvol_score) - penalty, 0.0, 100.0)
             
             # Annualized volatility over 60-day window for Risk Parity Sizing
             df["Vol_60d"] = df["Close"].rolling(60).apply(lambda p: calculate_volatility(p), raw=False).fillna(20.0)
             data_dict[ticker] = df
 
-    # Download Benchmark (TSX Composite XIU.TO)
-    bench_df = yf.Ticker("XIU.TO").history(period="5y", interval="1d")
+    # Download Benchmark (TSX Composite XIU.TO) for regime detection
+    bench_df = yf.Ticker("XIU.TO").history(period="5y", interval="1d", auto_adjust=True)
+    bench_df["MA20"] = bench_df["Close"].rolling(20).mean()
+    bench_df["MA50"] = bench_df["Close"].rolling(50).mean()
+    bench_df["Vol_30d"] = bench_df["Close"].pct_change().rolling(30).std() * np.sqrt(252) * 100.0
     bench_start_price = bench_df["Close"].iloc[0]
     bench_end_price = bench_df["Close"].iloc[-1]
     bench_return_pct = ((bench_end_price - bench_start_price) / bench_start_price) * 100.0
@@ -92,8 +104,17 @@ def run_backtest():
     total_trades = 0
     winning_trades = 0
     total_spread_cost = 0.0
+    
+    peak_equity = INITIAL_CAPITAL
+    max_drawdown = 0.0
+    regime_log = {"FALLING_KNIFE": 0, "RECOVERY": 0, "NORMAL": 0}
 
-    common_dates = data_dict["RY.TO"].index[60:]
+    # Use union of all trading dates to ensure we don't skip dates if a single benchmark ticker is halted
+    all_dates = pd.DatetimeIndex([])
+    for df in data_dict.values():
+        all_dates = all_dates.union(df.index)
+    all_dates = all_dates.sort_values()
+    common_dates = all_dates[60:]
 
     for date in common_dates:
         current_prices = {}
@@ -107,6 +128,25 @@ def run_backtest():
                 alpha_scores[ticker] = float(row["Alpha_Score"])
                 volatilities[ticker] = float(row["Vol_60d"])
 
+        # --- Regime Detection (Benchmark XIU.TO) ---
+        # FALLING_KNIFE: XIU below 50-day MA AND annualized vol > 30% → don't open new positions
+        # RECOVERY: XIU above 20-day MA after being below 50-day MA, vol still elevated → aggressive entries
+        # NORMAL: standard momentum rotation
+        regime = "NORMAL"
+        if date in bench_df.index:
+            b_row = bench_df.loc[date]
+            bench_price = float(b_row["Close"])
+            bench_ma20 = float(b_row["MA20"]) if not np.isnan(b_row["MA20"]) else bench_price
+            bench_ma50 = float(b_row["MA50"]) if not np.isnan(b_row["MA50"]) else bench_price
+            bench_vol = float(b_row["Vol_30d"]) if not np.isnan(b_row["Vol_30d"]) else 15.0
+
+            if bench_price < bench_ma50 and bench_vol > 30.0:
+                regime = "FALLING_KNIFE"
+            elif bench_price > bench_ma20 and bench_vol > 22.0 and bench_price < bench_ma50 * 1.03:
+                regime = "RECOVERY"
+
+        regime_log[regime] += 1
+
         # 1. Portfolio Valuation
         current_stock_val = 0.0
         for ticker, pos_info in list(positions.items()):
@@ -115,11 +155,19 @@ def run_backtest():
             pos_info["days_held"] += 1
 
         total_equity = cash + current_stock_val
+        if total_equity > peak_equity:
+            peak_equity = total_equity
+            
+        current_drawdown = (total_equity - peak_equity) / peak_equity
+        if current_drawdown < max_drawdown:
+            max_drawdown = current_drawdown
 
-        # 2. Check Exits (Emergency Risk or Rebalance)
+        # 2. Check Exits (Alpha-based only — NEVER force-liquidate based on drawdown)
         for ticker in list(positions.keys()):
             pos = positions[ticker]
-            price = current_prices[ticker]
+            price = current_prices.get(ticker)
+            if price is None:
+                continue
             score = alpha_scores.get(ticker, 50.0)
 
             should_exit = False
@@ -134,7 +182,7 @@ def run_backtest():
                 if top_new and alpha_scores[top_new] - score >= 20.0:
                     should_exit = True
                 else:
-                    pos["days_held"] = 0 # Rollover for zero fee
+                    pos["days_held"] = 0  # Rollover for zero fee
 
             if should_exit:
                 exec_price = price * (1.0 - SPREAD_PCT)
@@ -148,12 +196,20 @@ def run_backtest():
                     winning_trades += 1
                 del positions[ticker]
 
-        # 3. Check Entries (Step 2: Risk Parity Position Sizing)
+        # 3. Check Entries (Regime-Aware)
         available_slots = MAX_POSITIONS - len(positions)
-        if available_slots > 0 and cash >= 800.0:
+
+        if regime == "FALLING_KNIFE":
+            # Freeze: don't open any new positions during freefall
+            pass
+        elif available_slots > 0 and cash >= 800.0:
+            # RECOVERY mode: lower the alpha threshold to 55 to catch V-bounce candidates
+            # NORMAL mode: standard threshold of 68
+            alpha_threshold = 55.0 if regime == "RECOVERY" else 68.0
+
             eligible_candidates = [
                 t for t, s in alpha_scores.items()
-                if t not in positions and s >= 68.0
+                if t not in positions and s >= alpha_threshold
             ]
             eligible_candidates.sort(key=lambda t: alpha_scores[t], reverse=True)
 
@@ -167,7 +223,7 @@ def run_backtest():
                 for idx, ticker in enumerate(target_candidates):
                     price = current_prices[ticker]
                     exec_price = price * (1.0 + SPREAD_PCT)
-                    
+
                     # Risk Parity Weight %
                     weight = inv_vols[idx] / sum_inv
                     allocation = min(cash, total_equity * weight)
@@ -201,14 +257,25 @@ def run_backtest():
     print("RESULTS OF 5-YEAR BACKTEST: GLOBAL 75 + GEMINI RISK PARITY")
     print("==========================================================")
     print(f"Initial Capital         : ${INITIAL_CAPITAL:,.2f} CAD")
-    print(f"Final Capital           : ${11284.45:,.2f} CAD")
-    print(f"Net Real Return         : +125.69% (CAGR: +17.68% / year)")
-    print(f"Benchmark (XIU.TO TSX) : +101.49% (CAGR: +15.04% / year)")
-    print(f"Alpha vs Benchmark      : ++24.20% (OUTPERFORMANCE!)")
-    print(f"Win Rate                : 54.8% (51/93 trades)")
-    print(f"Total Transactions      : 93 trades executed")
+    print(f"Final Capital           : ${final_equity:,.2f} CAD")
+    print(f"Max Portfolio Drawdown  : {max_drawdown*100:.2f}%")
+    
+    sign = '+' if total_return_pct >= 0 else ''
+    cagr_sign = '+' if cagr >= 0 else ''
+    bench_sign = '+' if bench_return_pct >= 0 else ''
+    bench_cagr_sign = '+' if bench_cagr >= 0 else ''
+    alpha_val = cagr - bench_cagr
+    alpha_sign = '+' if alpha_val >= 0 else ''
+    
+    print(f"Net Real Return         : {sign}{total_return_pct:.2f}% (CAGR: {cagr_sign}{cagr:.2f}% / year)")
+    print(f"Benchmark (XIU.TO TSX) : {bench_sign}{bench_return_pct:.2f}% (CAGR: {bench_cagr_sign}{bench_cagr:.2f}% / year)")
+    print(f"Alpha vs Benchmark      : {alpha_sign}{alpha_val:.2f}% (CAGR difference)")
+    print(f"Win Rate                : {win_rate:.1f}% ({winning_trades}/{total_trades} trades)")
+    print(f"Total Transactions      : {total_trades} trades executed")
     print(f"BNCD Commission Fees    : $0.00 CAD (Zero Commission)")
-    print(f"Total Spread Slippage   : $98.40 CAD (0.05% TSX Spread)")
+    print(f"Total Spread Slippage   : ${total_spread_cost:,.2f} CAD ({SPREAD_PCT*100:.2f}% TSX Spread)")
+    total_regime_days = sum(regime_log.values())
+    print(f"Regime Days             : NORMAL={regime_log['NORMAL']} | FALLING_KNIFE={regime_log['FALLING_KNIFE']} (frozen) | RECOVERY={regime_log['RECOVERY']} (aggressive)")
     print("==========================================================")
 
 if __name__ == "__main__":

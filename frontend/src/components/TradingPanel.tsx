@@ -12,6 +12,7 @@ interface TradingPanelProps {
   onBuy?: (ticker: string, quantity: number) => void;
   onSell?: (ticker: string, quantity: number) => void;
   onTradeSuccess?: () => void;
+  marketRegime?: "NORMAL" | "FALLING_KNIFE" | "RECOVERY";
 }
 
 export const TradingPanel: React.FC<TradingPanelProps> = ({
@@ -21,7 +22,8 @@ export const TradingPanel: React.FC<TradingPanelProps> = ({
   activePositionsCount,
   onBuy,
   onSell,
-  onTradeSuccess
+  onTradeSuccess,
+  marketRegime = "NORMAL"
 }) => {
   const [quantity, setQuantity] = useState<number>(1);
   const [loading, setLoading] = useState<boolean>(false);
@@ -35,6 +37,8 @@ export const TradingPanel: React.FC<TradingPanelProps> = ({
   const bncdFee = 0.00; // BNCD $0.00 commission
 
   const totalEstCost = Math.round(quantity) * buyExecPrice + bncdFee;
+  
+  const isFallingKnife = marketRegime === "FALLING_KNIFE";
 
   const handleBuyClick = async () => {
     if (onBuy) {
@@ -73,10 +77,10 @@ export const TradingPanel: React.FC<TradingPanelProps> = ({
   };
 
   return (
-    <div className="glass-card p-6 mb-6">
+    <div className="glass-panel p-6 mb-6 rounded-2xl">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-bold text-gray-100 flex items-center gap-2">
-          <Zap className="w-5 h-5 text-emerald-400" /> Terminal d'Ordres BNCD ($0 Frais)
+          <Zap className="w-5 h-5 text-emerald-400" /> Terminal d'Ordres
         </h3>
         <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/30 flex items-center gap-1">
           <ShieldCheck className="w-3 h-3 text-emerald-400" /> Courtage BNCD ($0.00 CAD)
@@ -114,23 +118,64 @@ export const TradingPanel: React.FC<TradingPanelProps> = ({
         </div>
       </div>
 
+      {data?.indicators && (
+        <div className="mb-4 bg-slate-900/40 p-4 rounded-xl border border-white/5">
+          <h4 className="text-xs font-semibold text-slate-400 mb-3 uppercase tracking-wider">Analyse Quant & Risque</h4>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="flex flex-col">
+              <span className="text-xs text-slate-500">Gemini Alpha Score</span>
+              <div className="flex items-end gap-2">
+                <span className="text-xl font-bold text-purple-400">{data.indicators.alpha_score?.toFixed(1) || '--'}</span>
+                <span className="text-xs text-slate-400 pb-1">/ 100</span>
+              </div>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-xs text-slate-500">Momentum Signal</span>
+              <span className={`font-semibold ${data.indicators.overall_momentum_signal.includes('BULLISH') ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {data.indicators.overall_momentum_signal}
+              </span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-xs text-slate-500">VaR (95%, 10d)</span>
+              <span className="font-semibold text-rose-400">
+                {data.indicators.var_10d_95 ? `${(data.indicators.var_10d_95 * 100).toFixed(2)}%` : '--'}
+              </span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-xs text-slate-500">CVaR (Expected Shortfall)</span>
+              <span className="font-semibold text-rose-500">
+                {data.indicators.cvar_10d_95 ? `${(data.indicators.cvar_10d_95 * 100).toFixed(2)}%` : '--'}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+
       {tradeStatus && (
         <div className="mb-4 text-xs font-semibold p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/30 text-blue-300 text-center">
           {tradeStatus}
         </div>
       )}
 
-      <div className="flex gap-3">
+      <div className="flex gap-3 relative">
+        {isFallingKnife && (
+           <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm rounded-lg border border-rose-500/30">
+              <span className="text-rose-400 font-bold text-sm tracking-wide flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4" /> LOCKOUT: FALLING KNIFE REGIME
+              </span>
+           </div>
+        )}
         <button
           onClick={handleBuyClick}
-          disabled={loading || activePositionsCount >= 5}
+          disabled={loading || activePositionsCount >= 5 || isFallingKnife}
           className={`flex-1 py-2.5 rounded-lg font-semibold text-sm transition-all flex items-center justify-center gap-1 ${
-            activePositionsCount >= 5
-              ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-white/5'
+            activePositionsCount >= 5 || isFallingKnife
+              ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5'
               : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-500/20'
           }`}
         >
-          <DollarSign className="w-4 h-4" /> Acheter {Math.round(quantity)} action(s) (BNCD $0)
+          <DollarSign className="w-4 h-4" /> Acheter {Math.round(quantity)}
         </button>
 
         <button
@@ -138,7 +183,7 @@ export const TradingPanel: React.FC<TradingPanelProps> = ({
           disabled={loading}
           className="flex-1 bg-rose-600 hover:bg-rose-500 text-white py-2.5 rounded-lg font-semibold text-sm transition-all shadow-lg shadow-rose-500/20 flex items-center justify-center gap-1"
         >
-          Vendre {Math.round(quantity)} action(s) (BNCD $0)
+          Vendre {Math.round(quantity)}
         </button>
       </div>
     </div>

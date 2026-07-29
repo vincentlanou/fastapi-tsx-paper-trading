@@ -7,11 +7,16 @@ import {
   fetchPortfolio,
   fetchPnlHistory,
   resetPortfolio,
+  fetchMarketRegime,
+  fetchUniverse,
+  fetchBenchmarks,
   StockMarketData,
   SentimentData,
   PortfolioSummary,
-  PnlSnapshot
+  PnlSnapshot,
+  MarketRegime
 } from "@/lib/api";
+import { ShieldAlert, TrendingUp, Activity } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { PortfolioOverview } from "@/components/PortfolioOverview";
 import { PositionsList } from "@/components/PositionsList";
@@ -25,6 +30,9 @@ export default function DashboardPage() {
   const [sentimentData, setSentimentData] = useState<SentimentData | null>(null);
   const [portfolioData, setPortfolioData] = useState<PortfolioSummary | null>(null);
   const [pnlHistoryData, setPnlHistoryData] = useState<PnlSnapshot[]>([]);
+  const [marketRegime, setMarketRegime] = useState<MarketRegime | null>(null);
+  const [universe, setUniverse] = useState<string[]>([]);
+  const [benchmarks, setBenchmarks] = useState<Record<string, {name: string, return_pct: number}>>({});
 
   const [loadingMarket, setLoadingMarket] = useState<boolean>(true);
   const [loadingSentiment, setLoadingSentiment] = useState<boolean>(true);
@@ -63,12 +71,26 @@ export default function DashboardPage() {
       setPortfolioData(port);
       const history = await fetchPnlHistory();
       setPnlHistoryData(history);
+      const regime = await fetchMarketRegime();
+      setMarketRegime(regime);
+      const bench = await fetchBenchmarks();
+      setBenchmarks(bench);
     } catch (err) {
-      console.error("Error loading portfolio:", err);
+      console.error("Error loading portfolio or regime:", err);
+    }
+  };
+
+  const loadUniverse = async () => {
+    try {
+      const u = await fetchUniverse();
+      setUniverse(u);
+    } catch (err) {
+      console.error("Error loading universe:", err);
     }
   };
 
   useEffect(() => {
+    loadUniverse();
     loadTickerData("SHOP.TO");
     loadPortfolioAndHistory();
   }, []);
@@ -91,7 +113,22 @@ export default function DashboardPage() {
   return (
     <main className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
       {/* Top Navigation */}
-      <Navbar currentTicker={currentTicker} onSelectTicker={handleSelectTicker} />
+      <Navbar currentTicker={currentTicker} universe={universe} onSelectTicker={handleSelectTicker} />
+
+      {/* Global Regime Banner */}
+      {marketRegime && marketRegime.regime !== "NORMAL" && (
+        <div className={`p-4 rounded-xl text-sm font-semibold flex items-center gap-3 shadow-lg ${
+          marketRegime.regime === "FALLING_KNIFE" 
+            ? "bg-rose-500/10 border border-rose-500/40 text-rose-400 shadow-rose-500/10 animate-pulse-glow"
+            : "bg-emerald-500/10 border border-emerald-500/40 text-emerald-400 shadow-emerald-500/10"
+        }`}>
+          {marketRegime.regime === "FALLING_KNIFE" ? <ShieldAlert className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />}
+          <div>
+            <span className="block text-white">GLOBAL TSX REGIME: {marketRegime.regime}</span>
+            <span className="font-normal opacity-80">{marketRegime.message}</span>
+          </div>
+        </div>
+      )}
 
       {errorMsg && (
         <div className="bg-rose-500/20 border border-rose-500/40 text-rose-300 p-4 rounded-xl text-sm font-semibold">
@@ -103,6 +140,7 @@ export default function DashboardPage() {
       <PortfolioOverview
         portfolio={portfolioData}
         pnlHistory={pnlHistoryData}
+        benchmarks={benchmarks}
         onReset={handleResetPortfolio}
       />
 
@@ -122,10 +160,12 @@ export default function DashboardPage() {
         <div className="lg:col-span-5 space-y-6">
           {/* Trading Order Terminal */}
           <TradingPanel
+            data={marketData}
             currentTicker={currentTicker}
             currentPrice={marketData?.current_price || 0}
             activePositionsCount={portfolioData?.positions.length || 0}
             onTradeSuccess={loadPortfolioAndHistory}
+            marketRegime={marketRegime?.regime || "NORMAL"}
           />
 
 

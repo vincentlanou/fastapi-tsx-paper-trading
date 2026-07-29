@@ -5,21 +5,11 @@ import { Search, TrendingUp, ShieldCheck } from "lucide-react";
 
 interface NavbarProps {
   currentTicker: string;
+  universe: string[];
   onSelectTicker: (ticker: string) => void;
 }
 
-const TSX_LARGE_CAPS = [
-  { symbol: "SHOP.TO", name: "Shopify" },
-  { symbol: "RY.TO", name: "RBC" },
-  { symbol: "TD.TO", name: "TD Bank" },
-  { symbol: "ENB.TO", name: "Enbridge" },
-  { symbol: "CNQ.TO", name: "Canadian Natural" },
-  { symbol: "BNS.TO", name: "Scotiabank" },
-  { symbol: "SU.TO", name: "Suncor" },
-  { symbol: "MFC.TO", name: "Manulife" }
-];
-
-export const Navbar: React.FC<NavbarProps> = ({ currentTicker, onSelectTicker }) => {
+export const Navbar: React.FC<NavbarProps> = ({ currentTicker, universe, onSelectTicker }) => {
   const [searchInput, setSearchInput] = useState("");
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -46,39 +36,32 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTicker, onSelectTicker })
         </div>
       </div>
 
-      {/* Search Form */}
-      <form onSubmit={handleSearchSubmit} className="flex items-center bg-slate-900/80 border border-white/10 rounded-full px-4 py-1.5 w-full md:w-80 focus-within:border-blue-500 transition-all">
-        <Search className="w-4 h-4 text-gray-400 mr-2" />
-        <input
-          type="text"
-          placeholder="Ticker TSX (ex: SHOP.TO, RY.TO)..."
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          className="bg-transparent border-none outline-none text-sm text-gray-100 placeholder-gray-500 w-full"
-        />
-        <button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-1 rounded-full transition-all">
-          OK
-        </button>
-      </form>
+      {/* Search & Universe Selector */}
+      <div className="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
+        <form onSubmit={handleSearchSubmit} className="flex items-center bg-slate-900/80 border border-white/10 rounded-xl px-4 py-1.5 w-full sm:w-64 focus-within:border-blue-500 transition-all">
+          <Search className="w-4 h-4 text-gray-400 mr-2" />
+          <input
+            type="text"
+            placeholder="Rechercher (ex: SHOP.TO)"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            className="bg-transparent border-none outline-none text-sm text-gray-100 placeholder-gray-500 w-full"
+          />
+          <button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-1 rounded-lg transition-all ml-2">
+            GO
+          </button>
+        </form>
 
-      {/* Quick TSX Large Caps Chips */}
-      <div className="flex items-center gap-1.5 flex-wrap">
-        {TSX_LARGE_CAPS.map((item) => {
-          const isActive = currentTicker.toUpperCase() === item.symbol;
-          return (
-            <button
-              key={item.symbol}
-              onClick={() => onSelectTicker(item.symbol)}
-              className={`text-xs px-3 py-1.5 rounded-full font-medium transition-all ${
-                isActive
-                  ? "bg-blue-500/20 border border-blue-400 text-blue-300 shadow-sm shadow-blue-500/30"
-                  : "bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10"
-              }`}
-            >
-              {item.symbol}
-            </button>
-          );
-        })}
+        <select 
+          value={currentTicker}
+          onChange={(e) => onSelectTicker(e.target.value)}
+          className="bg-slate-900/80 border border-white/10 text-gray-300 text-sm rounded-xl px-4 py-2 focus:border-blue-500 outline-none w-full sm:w-64 cursor-pointer"
+        >
+          <option value="" disabled>Parcourir l'Univers (75 Actions)</option>
+          {universe.map(ticker => (
+            <option key={ticker} value={ticker}>{ticker}</option>
+          ))}
+        </select>
       </div>
     </header>
   );
