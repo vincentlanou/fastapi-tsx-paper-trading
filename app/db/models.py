@@ -24,6 +24,8 @@ class Position(Base):
     ticker = Column(String, nullable=False, index=True)
     quantity = Column(Float, nullable=False, default=0.0)
     average_buy_price = Column(Float, nullable=False, default=0.0)
+    peak_price = Column(Float, nullable=False, default=0.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     account = relationship("Account", back_populates="positions")

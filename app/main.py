@@ -10,12 +10,22 @@ from app.routers import market, sentiment, trading, notifications, autopilot
 # Create database tables if they do not exist
 Base.metadata.create_all(bind=engine)
 
-# Auto-migration for Phase 6: Add peak_price to Position table if missing
+from sqlalchemy import text
+
+# Auto-migration for Phase 6: Add peak_price and created_at to Position table if missing
 try:
     with engine.connect() as conn:
-        conn.execute("ALTER TABLE positions ADD COLUMN peak_price FLOAT NOT NULL DEFAULT 0.0")
+        conn.execute(text("ALTER TABLE positions ADD COLUMN peak_price FLOAT NOT NULL DEFAULT 0.0"))
+        conn.commit()
 except Exception:
-    pass # Column likely already exists
+    pass
+
+try:
+    with engine.connect() as conn:
+        conn.execute(text("ALTER TABLE positions ADD COLUMN created_at DATETIME"))
+        conn.commit()
+except Exception:
+    pass
 
 app = FastAPI(
     title="Trading Momentum & AI Sentiment Analytics Platform",

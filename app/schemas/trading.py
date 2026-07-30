@@ -11,7 +11,7 @@ class PositionResponse(BaseModel):
     ticker: str
     quantity: float
     average_buy_price: float
-    peak_price: float
+    peak_price: Optional[float] = 0.0
     current_price: float
     market_value: float
     unrealized_pnl: float
