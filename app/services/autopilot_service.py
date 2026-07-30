@@ -6,7 +6,7 @@ import yfinance as yf
 from app.config import ALLOWED_TSX_TICKERS, MAX_POSITIONS, INITIAL_BALANCE
 from app.db.models import Account, Position, Trade
 from app.services import market_service, trading_service, notification_service
-from app.services.sentiment_service import get_market_regime
+from app.services.trading_service import check_market_regime
 
 logger = logging.getLogger("autopilot_service")
 
@@ -96,8 +96,7 @@ def run_autopilot(db: Session) -> dict:
     summary_logs = []
     
     # 1. Determine Global Market Regime
-    regime_data = get_market_regime()
-    regime = regime_data["regime"]
+    regime, regime_msg = check_market_regime()
     
     # Threshold logic based on regime
     if regime == "FALLING_KNIFE":

@@ -63,6 +63,21 @@ def record_snapshot(db: Session, account: Account):
     db.add(snap)
     db.commit()
 
+def check_market_regime() -> tuple[str, str]:
+    """Returns regime (NORMAL, FALLING_KNIFE) and a message."""
+    try:
+        bench = yf.Ticker("XIU.TO").history(period="3mo")
+        if not bench.empty and len(bench) >= 50:
+            bench_price = float(bench["Close"].iloc[-1])
+            bench_ma50 = float(bench["Close"].rolling(50).mean().iloc[-1])
+            bench_vol = float(bench["Close"].pct_change().rolling(30).std().iloc[-1] * np.sqrt(252) * 100.0)
+            
+            if bench_price < bench_ma50 and bench_vol > 30.0:
+                return "FALLING_KNIFE", f"XIU.TO est sous sa MA50 avec une volatilité de {bench_vol:.1f}%."
+        return "NORMAL", "Market is in normal operating regime."
+    except Exception as e:
+        return "NORMAL", f"Failed to check regime: {str(e)}"
+
 def get_live_price(ticker: str) -> float:
     """Fetch current TSX market price for a ticker via yfinance."""
     norm_ticker = normalize_tsx_ticker(ticker)
