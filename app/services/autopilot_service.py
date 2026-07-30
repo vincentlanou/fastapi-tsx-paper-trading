@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 import yfinance as yf
 
-from app.config import ALLOWED_TSX_TICKERS, MAX_POSITIONS, MIN_POSITION_SIZE, INITIAL_BALANCE
+from app.config import ALLOWED_TSX_TICKERS, MAX_POSITIONS, INITIAL_BALANCE
 from app.db.models import Account, Position, Trade
 from app.services import market_service, trading_service, notification_service
 from app.services.sentiment_service import get_market_regime
@@ -158,7 +158,7 @@ def run_autopilot(db: Session) -> dict:
                 # Cannot exceed available cash
                 allocation_cad = min(target_allocation_cad, account.cash_balance)
                 
-                if allocation_cad >= MIN_POSITION_SIZE:
+                if allocation_cad >= 500.0:
                     current_price = market_data.current_price
                     qty = int(allocation_cad // current_price)
                     
