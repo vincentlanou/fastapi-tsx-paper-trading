@@ -10,6 +10,8 @@ export interface MomentumIndicators {
   overall_momentum_signal: string;
   momentum_score: number;
   rvol?: number;
+  mean_reversion_penalty?: number;
+  risk_parity_weight?: number;
   alpha_score?: number;
   var_10d_95?: number;
   cvar_10d_95?: number;
