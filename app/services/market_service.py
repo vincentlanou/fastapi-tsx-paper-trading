@@ -1,11 +1,17 @@
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import logging
 from typing import Dict, Any, Tuple, List
+from datetime import datetime, timedelta
+import math
+from functools import lru_cache
+
 from app.config import ALLOWED_TSX_TICKERS, MIN_MARKET_CAP_TSX, TRANSACTION_FEE_CAD, BID_ASK_SPREAD_SLIPPAGE, RISK_FREE_RATE
 from app.schemas.market import StockMarketDataResponse, MomentumIndicators, PricePoint
 from app.services.sentiment_service import get_news_sentiment
 
+logger = logging.getLogger(__name__)
 
 def normalize_tsx_ticker(raw_ticker: str) -> str:
     """Normalize input ticker to TSX format (.TO extension)."""
@@ -13,6 +19,15 @@ def normalize_tsx_ticker(raw_ticker: str) -> str:
     if not clean.endswith(".TO") and not clean.endswith(".V"):
         clean += ".TO"
     return clean
+
+@lru_cache(maxsize=1)
+def get_benchmark_returns() -> pd.Series:
+    """Returns 60-day historical returns for XIU.TO to calculate correlation bonus. Caches the result."""
+    yticker = yf.Ticker("XIU.TO")
+    df = yticker.history(period="3mo")
+    if df.empty:
+        return pd.Series()
+    return df["Close"].pct_change().dropna()
 
 def validate_tsx_large_cap(ticker: str) -> Tuple[str, Dict[str, Any]]:
     """Validate that ticker is a Large Cap stock listed on the Toronto Stock Exchange (TSX)."""
@@ -88,7 +103,7 @@ def calculate_sharpe_and_sortino(prices: pd.Series, risk_free_rate: float = RISK
     """Calculate Sharpe Ratio, Sortino Ratio, Annualized Volatility, and Max Drawdown."""
     daily_returns = prices.pct_change().dropna()
     if daily_returns.empty or len(daily_returns) < 10:
-        return 1.0, 1.2, 15.0, -10.0
+        return None, None, None, None
         
     ann_return = daily_returns.mean() * 252
     ann_vol = daily_returns.std() * np.sqrt(252)
@@ -109,11 +124,11 @@ def calculate_tail_risk(prices: pd.Series) -> Tuple[float, float]:
     """Calculate 10-day Parametric VaR (95%) and Historical CVaR (95%)."""
     daily_returns = prices.pct_change().dropna()
     if len(daily_returns) < 10:
-        return 0.0, 0.0
+        return None, None
         
     rolling_10d_returns = daily_returns.rolling(10).apply(lambda x: (1 + x).prod() - 1, raw=False).dropna()
     if rolling_10d_returns.empty:
-        return 0.0, 0.0
+        return None, None
         
     mu = rolling_10d_returns.mean()
     sigma = rolling_10d_returns.std()
@@ -197,18 +212,36 @@ def get_stock_data_and_indicators(ticker: str, period: str = "6mo") -> StockMark
     # 2) Momentum Score (RSI + MACD)
     macd_score_contrib = np.clip(curr_hist / (latest_price * 0.02), -1.0, 1.0) * 50 + 50
     momentum_score = (curr_rsi * 0.5) + (macd_score_contrib * 0.5)
-    # 3) RVOL Score (0-100)
     rvol_score = min(100.0, rvol * 50.0)
-    # 4) Mean Reversion Penalty (0-10)
     penalty = calculate_mean_reversion_penalty(close_prices, curr_rsi)
     
-    # Combined 4-Stage Alpha Score: 40% News + 30% Momentum + 20% RVOL - 10% Penalty
-    alpha_score = float(np.round(
-        np.clip(
-            (0.40 * nlp_sentiment_score) + (0.30 * momentum_score) + (0.20 * rvol_score) - penalty,
-            0.0, 100.0
-        ), 2
-    ))
+    alpha_score = np.clip((0.70 * momentum_score) + (0.30 * rvol_score) - penalty, 0.0, 100.0)
+    
+    # Decorrelation bonus
+    bench_returns = get_benchmark_returns()
+    returns = close_prices.pct_change().dropna()
+    if not bench_returns.empty and len(returns) >= 20:
+        aligned = pd.concat([returns, bench_returns], axis=1, join="inner").dropna()
+        if len(aligned) >= 20:
+            corr = aligned.iloc[:, 0].corr(aligned.iloc[:, 1])
+            if not np.isnan(corr):
+                decorr_bonus = (1.0 - corr) * 10.0
+                alpha_score = np.clip(alpha_score + decorr_bonus, 0.0, 100.0)
+                
+    alpha_score = float(np.round(alpha_score, 2))
+
+    # Risk Parity Sizing (Expected Return vs Downside Risk)
+    neg_returns = returns[returns < 0]
+    if not neg_returns.empty and len(neg_returns) >= 5:
+        downside_vol = neg_returns.std() * np.sqrt(252) * 100.0
+    else:
+        downside_vol = 15.0
+        
+    downside_vol = max(1.0, downside_vol)
+    # Give a weight proportional to Alpha / Downside Vol. We'll clip between 10 and 33.
+    # Typical Alpha/Downside ratio is around 50 / 15 = 3.3. So multiplying by 5 gives ~ 16%.
+    ratio = alpha_score / downside_vol
+    risk_parity_weight = float(np.round(np.clip(ratio * 5.0, 10.0, 33.0), 2))
     
     if alpha_score >= 60:
         overall_momentum_signal = "BULLISH"
@@ -216,9 +249,6 @@ def get_stock_data_and_indicators(ticker: str, period: str = "6mo") -> StockMark
         overall_momentum_signal = "BEARISH"
     else:
         overall_momentum_signal = "NEUTRAL"
-
-    # Step 2: Risk Parity Weight (Inverse Volatility Weighting for single stock relative to average 20% volatility)
-    risk_parity_weight = round(min(33.0, max(10.0, (20.0 / max(1.0, volatility)) * 20.0)), 1)
 
     indicators = MomentumIndicators(
         current_rsi=round(curr_rsi, 2),
@@ -265,3 +295,50 @@ def get_stock_data_and_indicators(ticker: str, period: str = "6mo") -> StockMark
         indicators=indicators,
         chart_data=chart_data
     )
+
+def get_alpha_score_only(ticker: str) -> float | None:
+    """Fast-path to calculate just the Alpha Score for autopilot ranking."""
+    try:
+        norm_ticker, info = validate_tsx_large_cap(ticker)
+        yticker = yf.Ticker(norm_ticker)
+        df = yticker.history(period="1mo")
+        if df.empty or len(df) < 20:
+            return None
+            
+        close_prices = df["Close"]
+        volume_series = df["Volume"] if "Volume" in df else pd.Series([1000000]*len(df))
+        
+        rsi_series = calculate_rsi(close_prices, period=14)
+        macd_line, signal_line, histogram = calculate_macd(close_prices, fast=12, slow=26, signal=9)
+        rvol = calculate_rvol(volume_series, window=20)
+        
+        curr_rsi = float(rsi_series.iloc[-1])
+        curr_hist = float(histogram.iloc[-1])
+        latest_price = float(close_prices.iloc[-1])
+        
+        try:
+            sentiment_data = get_news_sentiment(norm_ticker)
+            nlp_sentiment_score = sentiment_data.sentiment_score
+        except Exception:
+            return None
+            
+        macd_score_contrib = np.clip(curr_hist / (latest_price * 0.02), -1.0, 1.0) * 50 + 50
+        momentum_score = (curr_rsi * 0.5) + (macd_score_contrib * 0.5)
+        rvol_score = min(100.0, rvol * 50.0)
+        penalty = calculate_mean_reversion_penalty(close_prices, curr_rsi)
+        
+        alpha_score = np.clip((0.70 * momentum_score) + (0.30 * rvol_score) - penalty, 0.0, 100.0)
+        
+        bench_returns = get_benchmark_returns()
+        returns = close_prices.pct_change().dropna()
+        if not bench_returns.empty and len(returns) >= 20:
+            aligned = pd.concat([returns, bench_returns], axis=1, join="inner").dropna()
+            if len(aligned) >= 20:
+                corr = aligned.iloc[:, 0].corr(aligned.iloc[:, 1])
+                if not np.isnan(corr):
+                    decorr_bonus = (1.0 - corr) * 10.0
+                    alpha_score = np.clip(alpha_score + decorr_bonus, 0.0, 100.0)
+        
+        return float(np.round(alpha_score, 2))
+    except Exception:
+        return None

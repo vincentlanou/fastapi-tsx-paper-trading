@@ -5,10 +5,17 @@ from fastapi.responses import FileResponse
 import os
 
 from app.db.database import engine, Base
-from app.routers import market, sentiment, trading, notifications
+from app.routers import market, sentiment, trading, notifications, autopilot
 
 # Create database tables if they do not exist
 Base.metadata.create_all(bind=engine)
+
+# Auto-migration for Phase 6: Add peak_price to Position table if missing
+try:
+    with engine.connect() as conn:
+        conn.execute("ALTER TABLE positions ADD COLUMN peak_price FLOAT NOT NULL DEFAULT 0.0")
+except Exception:
+    pass # Column likely already exists
 
 app = FastAPI(
     title="Trading Momentum & AI Sentiment Analytics Platform",
@@ -30,6 +37,7 @@ app.include_router(market.router)
 app.include_router(sentiment.router)
 app.include_router(trading.router)
 app.include_router(notifications.router)
+app.include_router(autopilot.router)
 
 # Mount Static Files (Frontend UI Dashboard)
 static_dir = os.path.join(os.path.dirname(__file__), "static")
