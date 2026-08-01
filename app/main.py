@@ -10,22 +10,22 @@ from app.routers import market, sentiment, trading, notifications, autopilot
 # Create database tables if they do not exist
 Base.metadata.create_all(bind=engine)
 
-from sqlalchemy import text
+from sqlalchemy import text, inspect
 
-# Auto-migration for Phase 6: Add peak_price and created_at to Position table if missing
+# Auto-migration: Add peak_price and created_at to Position table if missing (for legacy DBs)
+# For NEW PostgreSQL databases, create_all() above already creates the full schema.
 try:
+    inspector = inspect(engine)
+    existing_columns = [col["name"] for col in inspector.get_columns("positions")]
     with engine.connect() as conn:
-        conn.execute(text("ALTER TABLE positions ADD COLUMN peak_price FLOAT NOT NULL DEFAULT 0.0"))
-        conn.commit()
+        if "peak_price" not in existing_columns:
+            conn.execute(text("ALTER TABLE positions ADD COLUMN peak_price FLOAT NOT NULL DEFAULT 0.0"))
+            conn.commit()
+        if "created_at" not in existing_columns:
+            conn.execute(text("ALTER TABLE positions ADD COLUMN created_at TIMESTAMP"))
+            conn.commit()
 except Exception:
-    pass
-
-try:
-    with engine.connect() as conn:
-        conn.execute(text("ALTER TABLE positions ADD COLUMN created_at DATETIME"))
-        conn.commit()
-except Exception:
-    pass
+    pass  # Table may not exist yet (first run), create_all will handle it
 
 app = FastAPI(
     title="Trading Momentum & AI Sentiment Analytics Platform",
